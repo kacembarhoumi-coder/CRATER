@@ -144,9 +144,12 @@ def main():
                 if g is None:
                     drawn.append((hz["box"], (150, 150, 150), "beyond range"))
                     continue                                           # not localizable: not sent
-                if not is_hazard(hz["cls"], g["width_m"], g["height_m"], hf):
+                if not is_hazard(hz["cls"], g["width_m"], g["height_m"], hf, distance_m=g["range_m"]):
                     drawn.append((hz["box"], (110, 150, 110), "small"))
                     continue                                           # too small: not sent
+                if g["range_m"] > trusted_m:
+                    drawn.append((hz["box"], (150, 150, 150), f"{hz['cls']} {g['range_m']:.1f} m (far)"))
+                    continue                                           # beyond trusted range: not sent
                 drawn.append((hz["box"], (0, 0, 255) if hz["cls"] == "rock" else (0, 140, 255),
                               f"{hz['cls']} {g['range_m']:.1f} m"))
                 cov = covariance(proj, *hz["foot_px"], Pose(), err)

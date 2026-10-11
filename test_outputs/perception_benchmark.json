@@ -5,13 +5,13 @@
   "threads": 1,
   "conf_thres": 0.25,
   "images": 10,
-  "avg_ms_per_frame": 69.8,
-  "fps": 14.3,
+  "avg_ms_per_frame": 32.8,
+  "fps": 30.5,
   "per_image": [
     {
       "image": "17707_jpg.rf.9ab3ba6d68f6497f201dfea43d6d8f54.jpg",
       "n_hazards": 7,
-      "ms": 109.4,
+      "ms": 36.4,
       "hazards": [
         {
           "cls": "rock",
@@ -116,7 +116,7 @@
     {
       "image": "17783_jpg.rf.cbfb4aeb34d2cbaa657317e3c514d00c.jpg",
       "n_hazards": 5,
-      "ms": 67.9,
+      "ms": 31.6,
       "hazards": [
         {
           "cls": "crater",
@@ -193,7 +193,7 @@
     {
       "image": "17807_jpg.rf.7f1041aae0381709b20f061936933275.jpg",
       "n_hazards": 3,
-      "ms": 61.1,
+      "ms": 35.3,
       "hazards": [
         {
           "cls": "rock",
@@ -242,7 +242,7 @@
     {
       "image": "17813_jpg.rf.97453a4888c394776c6601c766273b42.jpg",
       "n_hazards": 5,
-      "ms": 62.3,
+      "ms": 37.0,
       "hazards": [
         {
           "cls": "rock",
@@ -319,7 +319,7 @@
     {
       "image": "17814_jpg.rf.d36edcb94777ff36057eaf6ea4a8bb3e.jpg",
       "n_hazards": 5,
-      "ms": 66.2,
+      "ms": 31.7,
       "hazards": [
         {
           "cls": "rock",
@@ -396,7 +396,7 @@
     {
       "image": "17847_jpg.rf.00b42fd99017443664e4c642095f22b0.jpg",
       "n_hazards": 7,
-      "ms": 70.0,
+      "ms": 30.7,
       "hazards": [
         {
           "cls": "rock",
@@ -501,7 +501,7 @@
     {
       "image": "17861_jpg.rf.006af0d4f29e04b7e9f4d62d4f43d076.jpg",
       "n_hazards": 2,
-      "ms": 80.7,
+      "ms": 31.0,
       "hazards": [
         {
           "cls": "crater",
@@ -536,7 +536,7 @@
     {
       "image": "18011_jpg.rf.ea6d6c9444f6cd019a0f01a980e2187c.jpg",
       "n_hazards": 8,
-      "ms": 72.1,
+      "ms": 33.0,
       "hazards": [
         {
           "cls": "crater",
@@ -655,7 +655,7 @@
     {
       "image": "18229_jpg.rf.e13dd0389cf2ea0d6ef8b5ee1f23cba2.jpg",
       "n_hazards": 1,
-      "ms": 79.5,
+      "ms": 34.1,
       "hazards": [
         {
           "cls": "crater",
@@ -676,7 +676,7 @@
     {
       "image": "18371_jpg.rf.1eecd859d4676b20b0310dcc64c799d9.jpg",
       "n_hazards": 3,
-      "ms": 68.2,
+      "ms": 31.1,
       "hazards": [
         {
           "cls": "rock",

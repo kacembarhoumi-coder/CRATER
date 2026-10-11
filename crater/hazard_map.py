@@ -12,21 +12,28 @@ from dataclasses import dataclass
 from crater.telemetry import Hazard
 
 HAZARD_DEFAULTS = {"rock_min_height_m": 0.1, "rock_min_width_m": 0.2, "crater_min_width_m": 0.3,
-                   "show_small": True, "rock_rule": "any"}
+                   "show_small": True, "rock_rule": "all", "max_range_m": 5.0}
 
 
-def is_hazard(cls, width, height, hf):
-    """Same rule as live_localize.py: True if the metric size threatens the rover."""
+def is_hazard(cls, width, height, hf, distance_m=None):
+    """True if the metric size and distance threaten the rover.
+    Small rocks/pebbles and unmeasured/out-of-range objects are filtered out."""
+    max_range = hf.get("max_range_m", 5.0)
+    if distance_m is not None and max_range is not None and distance_m > max_range:
+        return False
     if width is None:
-        return True
+        return False
     if cls == "crater":
         return width >= hf["crater_min_width_m"]
     if cls == "rock":
         wide = width >= hf["rock_min_width_m"]
-        if height is None:
-            return wide
-        tall = height >= hf["rock_min_height_m"]
-        return (wide and tall) if hf["rock_rule"] == "all" else (wide or tall)
+        tall = height is not None and height >= hf["rock_min_height_m"]
+        rule = hf.get("rock_rule", "all")
+        if rule == "all":
+            return wide and tall
+        elif rule == "any":
+            return wide or tall
+        return wide and tall
     return True
 
 

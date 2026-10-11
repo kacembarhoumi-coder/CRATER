@@ -5,11 +5,20 @@ from crater.hazard_map import HazardMap, is_hazard
 
 
 def test_is_hazard_filtering():
-    hf = {"rock_min_height_m": 0.1, "rock_min_width_m": 0.2, "crater_min_width_m": 0.3, "rock_rule": "any"}
-    assert is_hazard("rock", 0.25, 0.05, hf) is True   # wide enough
-    assert is_hazard("rock", 0.1, 0.05, hf) is False  # too small
+    hf = {"rock_min_height_m": 0.1, "rock_min_width_m": 0.2, "crater_min_width_m": 0.3, "rock_rule": "all", "max_range_m": 5.0}
+    # rock_rule == "all": must be BOTH wide enough AND tall enough
+    assert is_hazard("rock", 0.25, 0.15, hf) is True   # wide AND tall enough -> hazard
+    assert is_hazard("rock", 0.25, 0.05, hf) is False  # wide but flat -> can roll over
+    assert is_hazard("rock", 0.10, 0.15, hf) is False  # tall but narrow -> small pebble
+    assert is_hazard("rock", 0.10, 0.05, hf) is False  # small rock -> safe regolith
+    # craters: must meet minimum width
     assert is_hazard("crater", 0.35, None, hf) is True
     assert is_hazard("crater", 0.1, None, hf) is False
+    # unmeasured width: cannot be verified as hazard
+    assert is_hazard("rock", None, None, hf) is False
+    # range limit (trusted distance <= 5.0m)
+    assert is_hazard("rock", 0.3, 0.2, hf, distance_m=3.0) is True
+    assert is_hazard("rock", 0.3, 0.2, hf, distance_m=7.0) is False
 
 
 def test_hazard_map_tracks_and_merges():

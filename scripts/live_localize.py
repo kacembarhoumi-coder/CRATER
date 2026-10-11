@@ -48,25 +48,32 @@ HAZARD_DEFAULTS = {
     "rock_min_width_m": 0.2,
     "crater_min_width_m": 0.3,
     "show_small": True,
-    "rock_rule": "any",        # "any": tall OR wide enough (safe side) | "all": tall AND wide
+    "rock_rule": "all",        # "all": tall AND wide (only real obstacles) | "any": tall OR wide
+    "max_range_m": 5.0,
 }
 
 
 # ------------------------------------------------------------------------------------ hazard filter
-def is_hazard(cls, width, height, hf):
-    """True if a localized detection is big enough to threaten the rover.
-    Detections with no metric size (beyond range) cannot be judged: they are kept, never dropped blindly."""
+def is_hazard(cls, width, height, hf, distance_m=None):
+    """True if a localized detection is big enough and close enough to threaten the rover.
+    Detections with no metric size or beyond trusted range are filtered out."""
+    max_range = hf.get("max_range_m", 5.0)
+    if distance_m is not None and max_range is not None and distance_m > max_range:
+        return False
     if width is None:
-        return True
+        return False
     if cls == "crater":
         return width >= hf["crater_min_width_m"]
     if cls == "rock":
         wide = width >= hf["rock_min_width_m"]
         tall = height is not None and height >= hf["rock_min_height_m"]
-        if height is None:                                   # no height estimate: judge on width only
-            return wide
-        return (wide and tall) if hf["rock_rule"] == "all" else (wide or tall)
-    return True                                              # unknown class: keep it
+        rule = hf.get("rock_rule", "all")
+        if rule == "all":
+            return wide and tall
+        elif rule == "any":
+            return wide or tall
+        return wide and tall
+    return True
 
 
 # ------------------------------------------------------------------------------------ input
@@ -266,7 +273,7 @@ def main():
                          width=g["width_m"], height=g["height_m"], sigma=sigma, trusted=trusted)
                 if not trusted:
                     r["color"] = LOW_CONF
-            r["hazard"] = is_hazard(r["cls"], r["width"], r["height"], hf)   # FILTER by physical size
+            r["hazard"] = is_hazard(r["cls"], r["width"], r["height"], hf, distance_m=r["range"])   # FILTER by physical size & range
             results.append(r)
         raw_total += len(results)
         hazard_total += sum(r["hazard"] for r in results)
