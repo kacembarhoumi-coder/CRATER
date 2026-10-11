@@ -124,7 +124,9 @@ def serve(station, link, port, feed=None):
             elif self.path.startswith("/video.mjpg") and feed is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-                self.send_header("Cache-Control", "no-store")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Connection", "close")
                 self.end_headers()
                 last = -1
                 try:
@@ -135,9 +137,17 @@ def serve(station, link, port, feed=None):
                             continue
                         last = n
                         self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n" % len(jpeg))
-                        self.wfile.write(jpeg + b"\r\n")
+                        self.wfile.write(jpeg)
+                        self.wfile.write(b"\r\n")
+                        self.wfile.flush()
                 except OSError:                                 # browser closed the tab
                     return
+            elif self.path.startswith("/api/frame.jpg") and feed is not None:
+                jpeg, _ = feed.get()
+                if jpeg is not None:
+                    self._send(jpeg, "image/jpeg")
+                else:
+                    self.send_error(503, "No frame available yet")
             elif self.path in ("/", "/index.html"):
                 self._send((WEB / "dashboard.html").read_bytes(), "text/html; charset=utf-8")
             else:

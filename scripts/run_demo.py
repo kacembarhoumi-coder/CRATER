@@ -55,7 +55,7 @@ def main():
     lk = {**LINK_DEFAULTS, **cfg.get("link", {})}
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", required=True, help="video file")
-    ap.add_argument("--loop", action="store_true", help="restart the video when it ends")
+    ap.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="restart the video when it ends")
     ap.add_argument("--speed", type=float, default=0.1, help="simulated rover speed, m/s")
     ap.add_argument("--port", type=int, default=8000, help="dashboard port")
     ap.add_argument("--every", type=int, default=1, help="run the detector every N frames")
@@ -162,10 +162,13 @@ def main():
                             "width": g["width_m"] or 0.0})
             hmap.update(obs, t)
 
-            vis = frame                                                # onboard view for the dashboard
+            scale = max(1.0, W / 640.0)
+            thick = max(1, int(round(2 * scale)))
+            fs = max(0.4, 0.45 * scale)
+            vis = frame.copy()
             for (x1, y1, x2, y2), col, label in drawn:
-                cv2.rectangle(vis, (x1, y1), (x2, y2), col, 2)
-                cv2.putText(vis, label, (x1, max(14, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
+                cv2.rectangle(vis, (x1, y1), (x2, y2), col, thick)
+                cv2.putText(vis, label, (x1, max(int(18 * scale), y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, fs, col, max(1, int(scale)), cv2.LINE_AA)
             if W > 640:
                 vis = cv2.resize(vis, (640, int(H * 640 / W)))
             okj, jpg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 70])
