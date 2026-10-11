@@ -1,0 +1,44 @@
+{
+  "camera": {
+    "width": 640,
+    "height": 480,
+    "hfov_deg": 90.0
+  },
+  "mount": {
+    "tx": 0.2,
+    "ty": 0.0,
+    "h": 0.5,
+    "pitch_deg": 25.0
+  },
+  "localization": {
+    "min_depression_deg": 3.0,
+    "trusted_range_m": 5.0
+  },
+  "error_model": {
+    "sigma_px": 2.0,
+    "sigma_pitch_deg": 0.5,
+    "sigma_h": 0.01,
+    "sigma_f_rel": 0.01,
+    "sigma_pose_xy": 0.05,
+    "sigma_yaw_deg": 1.0
+  },
+  "detector": {
+    "model_path": "models/crater_detector.onnx",
+    "conf_thres": 0.25,
+    "iou_thres": 0.5,
+    "threads": 1
+  },
+  "telemetry": {
+    "rover_id": 1,
+    "max_packet_bytes": 64
+  },
+  "rover": {
+    "wheel_diameter_m": 0.2
+  },
+  "hazard_filter": {
+    "rock_min_height_m": 0.1,
+    "rock_min_width_m": 0.2,
+    "crater_min_width_m": 0.3,
+    "show_small": true
+  }
+}

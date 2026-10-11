@@ -1,0 +1,18 @@
+{
+  "0": {
+    "binary_bytes": 18,
+    "json_bytes": 109
+  },
+  "1": {
+    "binary_bytes": 25,
+    "json_bytes": 207
+  },
+  "5": {
+    "binary_bytes": 53,
+    "json_bytes": 607
+  },
+  "10": {
+    "binary_bytes": 88,
+    "json_bytes": 1166
+  }
+}

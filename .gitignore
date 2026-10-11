@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+# datasets are large: the training notebook downloads them, never commit them
+datasets/
+*.zip
+*.mp4
+test_outputs/images/
+test_outputs/live/

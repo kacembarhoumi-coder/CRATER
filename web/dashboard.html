@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C.R.A.T.E.R Mission Control</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--tx:#e6edf3;--mut:#8b949e;--ok:#3fb950;--warn:#d29922;--bad:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;display:flex;height:100vh}
+#vid{width:38%;min-width:0;display:flex;flex-direction:column;background:#000;border-right:1px solid var(--line)}#vid .cap{padding:6px 10px;color:var(--mut);font-size:12px;background:var(--panel);border-bottom:1px solid var(--line)}#vid img{width:100%;height:auto;display:block}@media(max-width:900px){#vid{display:none}}
+#map{flex:1;min-width:0;position:relative}canvas{width:100%;height:100%;display:block}
+#side{width:320px;background:var(--panel);border-left:1px solid var(--line);padding:12px;overflow:auto}
+h2{font-size:12px;letter-spacing:.08em;color:var(--mut);margin:14px 0 6px;text-transform:uppercase}h2:first-child{margin-top:0}
+.chip{display:inline-block;padding:3px 10px;border-radius:12px;font-weight:600;font-size:13px}
+.row{display:flex;justify-content:space-between;padding:2px 0}.row span:first-child{color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:3px 4px;text-align:left;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500}
+#banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--bad);color:#fff;padding:6px 16px;border-radius:6px;font-weight:600;display:none}
+button{background:#21262d;color:var(--tx);border:1px solid var(--line);padding:6px 10px;border-radius:6px;cursor:pointer}button:hover{background:#30363d}
+input[type=range]{width:100%}#legend{position:absolute;left:10px;bottom:10px;color:var(--mut);font-size:12px;background:#0d1117cc;padding:6px 8px;border-radius:6px}
+</style></head><body>
+<div id="vid"><div class="cap">ROVER ONBOARD CAMERA · processed locally, not sent over the link</div><img src="/video.mjpg" alt="rover camera"></div>
+<div id="map"><canvas id="c"></canvas><div id="banner">SIGNAL LOST: showing last known data</div>
+<div id="legend">Opacity = data freshness (solid = now, faint = 60 s+) · dashed circle = 95% uncertainty · filled = rock, ring = crater</div></div>
+<div id="side">
+<h2>Link</h2><div><span id="chip" class="chip">-</span></div>
+<div class="row"><span>Measured loss</span><b id="loss">-</b></div>
+<div class="row"><span>Latency</span><b id="lat">-</b></div>
+<div class="row"><span>Last packet</span><b id="last">-</b></div>
+<div class="row"><span>Packets rx / corrupt</span><b id="rx">-</b></div>
+<h2>Link emulator</h2>
+<div class="row"><span>Packet loss</span><b id="slv">-</b></div><input id="sl" type="range" min="0" max="90" value="15">
+<div style="margin-top:8px"><button id="bo">Blackout 10 s</button></div>
+<h2>Rover</h2><div id="rover" class="row"><span>-</span></div>
+<h2>Hazards (freshest first)</h2><table><thead><tr><th>ID</th><th>Class</th><th>E, N (m)</th><th>±95%</th><th>Age</th></tr></thead><tbody id="tb"></tbody></table>
+</div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');let S=null;
+const $=id=>document.getElementById(id),COL={rock:'255,90,90',crater:'255,161,61'};
+function fit(){cv.width=cv.clientWidth*devicePixelRatio;cv.height=cv.clientHeight*devicePixelRatio}addEventListener('resize',fit);fit();
+const alphaOf=a=>Math.max(.15,1-a/60);
+function draw(){
+  g.setTransform(1,0,0,1,0,0);g.fillStyle='#0d1117';g.fillRect(0,0,cv.width,cv.height);
+  if(!S||!S.rover){g.fillStyle='#8b949e';g.font=`${16*devicePixelRatio}px system-ui`;g.fillText('Waiting for first packet...',30,50);return}
+  const W=cv.width,H=cv.height,s=W/36,cx=W*.3,cy=H/2,r=S.rover;
+  const X=e=>cx+(e-r.E)*s,Y=n=>cy-(n-r.N)*s,px=devicePixelRatio;
+  g.font=`${11*px}px system-ui`;
+  for(let e=Math.floor(r.E-cx/s);e<=r.E+(W-cx)/s;e++){g.strokeStyle=e%5?'#161b22':'#30363d';g.beginPath();g.moveTo(X(e),0);g.lineTo(X(e),H);g.stroke();if(e%5==0){g.fillStyle='#8b949e';g.fillText(e+' m',X(e)+3,H-4)}}
+  for(let n=Math.floor(r.N-cy/s);n<=r.N+cy/s;n++){g.strokeStyle=n%5?'#161b22':'#30363d';g.beginPath();g.moveTo(0,Y(n));g.lineTo(W,Y(n));g.stroke();if(n%5==0){g.fillStyle='#8b949e';g.fillText(n+' m',4,Y(n)-3)}}
+  g.fillStyle='#58a6ff';g.fillRect(X(0)-5*px,Y(0)-5*px,10*px,10*px);g.fillText('LANDER',X(0)+8*px,Y(0)-6*px);
+  g.strokeStyle='#58a6ff88';g.lineWidth=2*px;g.beginPath();S.trail.forEach((p,i)=>i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1])));g.stroke();
+  for(const h of S.hazards){
+    const a=alphaOf(h.age),c=COL[h.cls]||'200,200,200',x=X(h.E),y=Y(h.N),rad=Math.max(h.width/2,.15)*s;
+    g.setLineDash([5*px,4*px]);g.strokeStyle=`rgba(${c},${a*.8})`;g.lineWidth=px;g.beginPath();g.arc(x,y,h.unc95*s,0,7);g.stroke();g.setLineDash([]);
+    g.lineWidth=2.5*px;g.strokeStyle=`rgba(${c},${a})`;g.fillStyle=`rgba(${c},${a*.6})`;g.beginPath();g.arc(x,y,rad,0,7);
+    if(h.cls==='rock')g.fill();g.stroke();
+    g.fillStyle=`rgba(230,237,243,${a})`;g.fillText('#'+h.hid+(h.age>10?` ${Math.round(h.age)}s`:''),x+rad+4*px,y-rad);
+  }
+  g.save();g.translate(X(r.E),Y(r.N));g.rotate(-r.yaw_deg*Math.PI/180);g.fillStyle='#fff';g.beginPath();g.moveTo(12*px,0);g.lineTo(-8*px,7*px);g.lineTo(-8*px,-7*px);g.fill();g.restore();
+}
+async function poll(){
+  try{S=await (await fetch('/api/state')).json()}catch(e){return}
+  const L=S.link,chip=$('chip');chip.textContent=L.status;
+  chip.style.background={OK:'#238636',DEGRADED:'#9e6a03',LOST:'#da3633','NO DATA':'#484f58'}[L.status];
+  $('loss').textContent=L.loss_pct+' %';$('lat').textContent=L.latency_ms+' ms';
+  $('last').textContent=L.since_last_s==null?'-':L.since_last_s.toFixed(1)+' s ago';
+  $('rx').textContent=L.rx+' / '+L.corrupted;$('banner').style.display=(L.status==='LOST')?'block':'none';
+  if(document.activeElement!==$('sl')){$('sl').value=L.set_loss_pct;$('slv').textContent=L.set_loss_pct+' %'}
+  if(S.rover){const r=S.rover;$('rover').innerHTML=`<span>E ${r.E} m · N ${r.N} m · yaw ${r.yaw_deg.toFixed(0)}° · ±${r.pose_sigma} m</span>`}
+  $('tb').innerHTML=[...S.hazards].sort((a,b)=>a.age-b.age).slice(0,14).map(h=>`<tr style="opacity:${alphaOf(h.age)}"><td>#${h.hid}</td><td>${h.cls}</td><td>${h.E.toFixed(1)}, ${h.N.toFixed(1)}</td><td>${h.unc95.toFixed(1)}</td><td>${h.age.toFixed(0)}s</td></tr>`).join('');
+  draw();
+}
+$('sl').oninput=e=>{$('slv').textContent=e.target.value+' %'};
+$('sl').onchange=e=>fetch('/api/link',{method:'POST',body:JSON.stringify({loss:e.target.value/100})});
+$('bo').onclick=()=>fetch('/api/link',{method:'POST',body:JSON.stringify({blackout:10})});
+setInterval(poll,500);poll();
+</script></body></html>
