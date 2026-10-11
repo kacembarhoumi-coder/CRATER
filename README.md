@@ -43,6 +43,8 @@ python scripts/run_demo.py --source data/sample_images/video.mp4
 # 4. Open Mission Control in your browser
 # -> http://127.0.0.1:8000
 ```
+> **PS** : please place the video.mp4 in the submission folder at: data/sample_images/video.mp4
+
 
 > **Zero Cloud Dependency**: The entire rover pipeline runs strictly on CPU with `numpy`, `opencv-python`, and `onnxruntime` — no PyTorch, no GPU, no internet connection required.
 
