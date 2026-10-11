@@ -178,5 +178,9 @@ The web interface (`web/dashboard.html`) delivers a modern, high-tech NASA/JPL f
 
 ## 👥 Team
 
-- **NILESAT Team** · ATEC'26 Lunar Scout Challenge
-  
+**NILESAT** · ATEC'26 Lunar Scout Challenge
+
+| Name | Role |
+|---|---|
+| **Kacem Barhoumi** | Team Member |
+| **Youcef Rbai** | Team Member |
