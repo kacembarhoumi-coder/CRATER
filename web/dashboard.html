@@ -1,75 +1,1051 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>C.R.A.T.E.R Mission Control</title>
-<style>
-:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--tx:#e6edf3;--mut:#8b949e;--ok:#3fb950;--warn:#d29922;--bad:#f85149}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,sans-serif;display:flex;height:100vh}
-#vid{width:38%;min-width:280px;display:flex;flex-direction:column;background:#000;border-right:1px solid var(--line)}#vid .cap{padding:6px 10px;color:var(--mut);font-size:12px;background:var(--panel);border-bottom:1px solid var(--line)}#vid img{width:100%;height:auto;display:block;background:#161b22}@media(max-width:720px){body{flex-direction:column}#vid{width:100%;height:auto;border-right:none;border-bottom:1px solid var(--line)}#side{width:100%;border-left:none;border-top:1px solid var(--line)}}
-#map{flex:1;min-width:0;position:relative}canvas{width:100%;height:100%;display:block}
-#side{width:320px;background:var(--panel);border-left:1px solid var(--line);padding:12px;overflow:auto}
-h2{font-size:12px;letter-spacing:.08em;color:var(--mut);margin:14px 0 6px;text-transform:uppercase}h2:first-child{margin-top:0}
-.chip{display:inline-block;padding:3px 10px;border-radius:12px;font-weight:600;font-size:13px}
-.row{display:flex;justify-content:space-between;padding:2px 0}.row span:first-child{color:var(--mut)}
-table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:3px 4px;text-align:left;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500}
-#banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--bad);color:#fff;padding:6px 16px;border-radius:6px;font-weight:600;display:none}
-button{background:#21262d;color:var(--tx);border:1px solid var(--line);padding:6px 10px;border-radius:6px;cursor:pointer}button:hover{background:#30363d}
-input[type=range]{width:100%}#legend{position:absolute;left:10px;bottom:10px;color:var(--mut);font-size:12px;background:#0d1117cc;padding:6px 8px;border-radius:6px}
-</style></head><body>
-<div id="vid"><div class="cap">ROVER ONBOARD CAMERA · processed locally, not sent over the link</div><img src="/video.mjpg" alt="rover camera"></div>
-<div id="map"><canvas id="c"></canvas><div id="banner">SIGNAL LOST: showing last known data</div>
-<div id="legend">Opacity = data freshness (solid = now, faint = 60 s+) · dashed circle = 95% uncertainty · filled = rock, ring = crater</div></div>
-<div id="side">
-<h2>Link</h2><div><span id="chip" class="chip">-</span></div>
-<div class="row"><span>Measured loss</span><b id="loss">-</b></div>
-<div class="row"><span>Latency</span><b id="lat">-</b></div>
-<div class="row"><span>Last packet</span><b id="last">-</b></div>
-<div class="row"><span>Packets rx / corrupt</span><b id="rx">-</b></div>
-<h2>Link emulator</h2>
-<div class="row"><span>Packet loss</span><b id="slv">-</b></div><input id="sl" type="range" min="0" max="90" value="15">
-<div style="margin-top:8px"><button id="bo">Blackout 10 s</button></div>
-<h2>Rover</h2><div id="rover" class="row"><span>-</span></div>
-<h2>Hazards (freshest first)</h2><table><thead><tr><th>ID</th><th>Class</th><th>E, N (m)</th><th>±95%</th><th>Age</th></tr></thead><tbody id="tb"></tbody></table>
-</div>
-<script>
-const cv=document.getElementById('c'),g=cv.getContext('2d');let S=null;
-const $=id=>document.getElementById(id),COL={rock:'255,90,90',crater:'255,161,61'};
-function fit(){cv.width=cv.clientWidth*devicePixelRatio;cv.height=cv.clientHeight*devicePixelRatio}addEventListener('resize',fit);fit();
-const alphaOf=a=>Math.max(.15,1-a/60);
-function draw(){
-  g.setTransform(1,0,0,1,0,0);g.fillStyle='#0d1117';g.fillRect(0,0,cv.width,cv.height);
-  if(!S||!S.rover){g.fillStyle='#8b949e';g.font=`${16*devicePixelRatio}px system-ui`;g.fillText('Waiting for first packet...',30,50);return}
-  const W=cv.width,H=cv.height,s=W/36,cx=W*.3,cy=H/2,r=S.rover;
-  const X=e=>cx+(e-r.E)*s,Y=n=>cy-(n-r.N)*s,px=devicePixelRatio;
-  g.font=`${11*px}px system-ui`;
-  for(let e=Math.floor(r.E-cx/s);e<=r.E+(W-cx)/s;e++){g.strokeStyle=e%5?'#161b22':'#30363d';g.beginPath();g.moveTo(X(e),0);g.lineTo(X(e),H);g.stroke();if(e%5==0){g.fillStyle='#8b949e';g.fillText(e+' m',X(e)+3,H-4)}}
-  for(let n=Math.floor(r.N-cy/s);n<=r.N+cy/s;n++){g.strokeStyle=n%5?'#161b22':'#30363d';g.beginPath();g.moveTo(0,Y(n));g.lineTo(W,Y(n));g.stroke();if(n%5==0){g.fillStyle='#8b949e';g.fillText(n+' m',4,Y(n)-3)}}
-  g.fillStyle='#58a6ff';g.fillRect(X(0)-5*px,Y(0)-5*px,10*px,10*px);g.fillText('LANDER',X(0)+8*px,Y(0)-6*px);
-  g.strokeStyle='#58a6ff88';g.lineWidth=2*px;g.beginPath();S.trail.forEach((p,i)=>i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1])));g.stroke();
-  for(const h of S.hazards){
-    const a=alphaOf(h.age),c=COL[h.cls]||'200,200,200',x=X(h.E),y=Y(h.N),rad=Math.max(h.width/2,.15)*s;
-    g.setLineDash([5*px,4*px]);g.strokeStyle=`rgba(${c},${a*.8})`;g.lineWidth=px;g.beginPath();g.arc(x,y,h.unc95*s,0,7);g.stroke();g.setLineDash([]);
-    g.lineWidth=2.5*px;g.strokeStyle=`rgba(${c},${a})`;g.fillStyle=`rgba(${c},${a*.6})`;g.beginPath();g.arc(x,y,rad,0,7);
-    if(h.cls==='rock')g.fill();g.stroke();
-    g.fillStyle=`rgba(230,237,243,${a})`;g.fillText('#'+h.hid+(h.age>10?` ${Math.round(h.age)}s`:''),x+rad+4*px,y-rad);
-  }
-  g.save();g.translate(X(r.E),Y(r.N));g.rotate(-r.yaw_deg*Math.PI/180);g.fillStyle='#fff';g.beginPath();g.moveTo(12*px,0);g.lineTo(-8*px,7*px);g.lineTo(-8*px,-7*px);g.fill();g.restore();
-}
-async function poll(){
-  try{S=await (await fetch('/api/state')).json()}catch(e){return}
-  const L=S.link,chip=$('chip');chip.textContent=L.status;
-  chip.style.background={OK:'#238636',DEGRADED:'#9e6a03',LOST:'#da3633','NO DATA':'#484f58'}[L.status];
-  $('loss').textContent=L.loss_pct+' %';$('lat').textContent=L.latency_ms+' ms';
-  $('last').textContent=L.since_last_s==null?'-':L.since_last_s.toFixed(1)+' s ago';
-  $('rx').textContent=L.rx+' / '+L.corrupted;$('banner').style.display=(L.status==='LOST')?'block':'none';
-  if(document.activeElement!==$('sl')){$('sl').value=L.set_loss_pct;$('slv').textContent=L.set_loss_pct+' %'}
-  if(S.rover){const r=S.rover;$('rover').innerHTML=`<span>E ${r.E} m · N ${r.N} m · yaw ${r.yaw_deg.toFixed(0)}° · ±${r.pose_sigma} m</span>`}
-  $('tb').innerHTML=[...S.hazards].sort((a,b)=>a.age-b.age).slice(0,14).map(h=>`<tr style="opacity:${alphaOf(h.age)}"><td>#${h.hid}</td><td>${h.cls}</td><td>${h.E.toFixed(1)}, ${h.N.toFixed(1)}</td><td>${h.unc95.toFixed(1)}</td><td>${h.age.toFixed(0)}s</td></tr>`).join('');
-  draw();
-}
-$('sl').oninput=e=>{$('slv').textContent=e.target.value+' %'};
-$('sl').onchange=e=>fetch('/api/link',{method:'POST',body:JSON.stringify({loss:e.target.value/100})});
-$('bo').onclick=()=>fetch('/api/link',{method:'POST',body:JSON.stringify({blackout:10})});
-const vi=document.querySelector('#vid img');
-if(vi){vi.onerror=()=>{setTimeout(()=>{vi.src='/video.mjpg?t='+Date.now()},1000)}}
-setInterval(poll,500);poll();
-</script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>C.R.A.T.E.R — Lunar Mission Control</title>
+  <style>
+    :root {
+      --bg: #07090e;
+      --panel: rgba(14, 19, 29, 0.82);
+      --panel-border: rgba(56, 75, 110, 0.35);
+      --panel-header: rgba(19, 26, 40, 0.95);
+      --tx: #e6edf3;
+      --tx-dim: #8b949e;
+      --tx-bright: #ffffff;
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.25);
+      --ok: #3fb950;
+      --ok-glow: rgba(63, 185, 80, 0.25);
+      --warn: #e3b341;
+      --bad: #f85149;
+      --bad-glow: rgba(248, 81, 73, 0.3);
+      --rock: #f87171;
+      --crater: #fbbf24;
+      --line: #21262d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--tx);
+      font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* ---- TOP AERO HEADER ---- */
+    header {
+      height: 48px;
+      background: var(--panel-header);
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      font-size: 15px;
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .brand-sub {
+      color: var(--tx-dim);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-left: 1px solid var(--panel-border);
+      padding-left: 10px;
+    }
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .met-badge {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .met-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+
+    /* ---- MAIN STAGE ---- */
+    #workspace {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+    #map-container {
+      flex: 1;
+      position: relative;
+      background: radial-gradient(circle at 40% 50%, #0d121c 0%, #06080d 100%);
+      overflow: hidden;
+      cursor: crosshair;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ---- MAP FLOATING HUD CONTROLS ---- */
+    .map-hud-top-right {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: flex;
+      gap: 8px;
+      z-index: 30;
+    }
+    .map-btn {
+      background: rgba(14, 20, 32, 0.85);
+      border: 1px solid var(--panel-border);
+      color: var(--tx);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+    .map-btn:hover {
+      background: rgba(28, 40, 64, 0.95);
+      border-color: var(--cyan);
+      color: var(--tx-bright);
+    }
+    .map-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    .map-hud-controls {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 30;
+    }
+    .zoom-btn {
+      width: 32px;
+      height: 32px;
+      background: rgba(14, 20, 32, 0.85);
+      border: 1px solid var(--panel-border);
+      color: var(--tx);
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+      transition: all 0.15s ease;
+    }
+    .zoom-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: rgba(28, 40, 64, 0.95);
+    }
+
+    /* ---- SCALE RULER BAR ---- */
+    #scale-ruler {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(10, 14, 22, 0.8);
+      border: 1px solid var(--panel-border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      backdrop-filter: blur(8px);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--tx-dim);
+    }
+    #scale-bar-line {
+      height: 4px;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan-glow);
+      border-left: 2px solid #fff;
+      border-right: 2px solid #fff;
+      transition: width 0.15s ease;
+    }
+
+    /* ---- HOVER TOOLTIP HUD ---- */
+    #hazard-tooltip {
+      position: absolute;
+      display: none;
+      background: rgba(12, 17, 28, 0.95);
+      border: 1px solid var(--cyan);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.7), 0 0 15px var(--cyan-glow);
+      padding: 10px 14px;
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      z-index: 60;
+      pointer-events: none;
+      min-width: 190px;
+    }
+    #hazard-tooltip h4 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .tt-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--tx-dim);
+      margin-bottom: 3px;
+    }
+    .tt-row b { color: var(--tx-bright); font-weight: 500; }
+
+    /* ---- BOTTOM-LEFT FLOATING VIDEO PIP ---- */
+    #pip-video {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 320px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.75), 0 0 1px rgba(255,255,255,0.1);
+      backdrop-filter: blur(12px);
+      z-index: 50;
+      transition: width 0.25s ease, height 0.25s ease;
+    }
+    #pip-video.minimized {
+      width: 220px;
+    }
+    #pip-video.minimized .pip-content {
+      display: none;
+    }
+    #pip-video.expanded {
+      width: 480px;
+    }
+    .pip-header {
+      height: 32px;
+      background: var(--panel-header);
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--tx-dim);
+    }
+    .pip-header .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--ok);
+    }
+    .pip-header .live-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 6px var(--ok);
+    }
+    .pip-controls {
+      display: flex;
+      gap: 4px;
+    }
+    .pip-btn {
+      background: none;
+      border: none;
+      color: var(--tx-dim);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    .pip-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: var(--tx-bright);
+    }
+    .pip-content {
+      position: relative;
+      background: #000;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pip-content img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .pip-osd {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      color: rgba(255,255,255,0.7);
+      background: rgba(0,0,0,0.5);
+      padding: 2px 6px;
+      border-radius: 3px;
+      pointer-events: none;
+    }
+
+    /* ---- RIGHT TELEMETRY SIDEBAR ---- */
+    #sidebar {
+      width: 330px;
+      background: var(--panel);
+      border-left: 1px solid var(--panel-border);
+      display: flex;
+      flex-direction: column;
+      z-index: 40;
+      backdrop-filter: blur(14px);
+      box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+    }
+    .sidebar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+    }
+    .sidebar-scroll::-webkit-scrollbar { width: 5px; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(56, 75, 110, 0.4); border-radius: 4px; }
+
+    .sec-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--tx-dim);
+      margin: 14px 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sec-title:first-child { margin-top: 0; }
+
+    /* CARD GRID */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .metric-card {
+      background: rgba(20, 27, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      padding: 8px 10px;
+      border-radius: 7px;
+    }
+    .metric-card .label { font-size: 10px; color: var(--tx-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .metric-card .val { font-size: 14px; font-weight: 700; color: var(--tx-bright); font-family: ui-monospace, monospace; }
+
+    /* LINK STATUS BADGE */
+    .link-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(20, 27, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      padding: 8px 12px;
+      border-radius: 7px;
+      margin-bottom: 8px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .status-badge.ok { background: rgba(63, 185, 80, 0.18); color: var(--ok); border: 1px solid rgba(63, 185, 80, 0.4); }
+    .status-badge.degraded { background: rgba(227, 179, 65, 0.18); color: var(--warn); border: 1px solid rgba(227, 179, 65, 0.4); }
+    .status-badge.lost { background: rgba(248, 81, 73, 0.18); color: var(--bad); border: 1px solid rgba(248, 81, 73, 0.4); animation: pulse-red 1.5s infinite; }
+    @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* SPARKLINE CHART */
+    .chart-container {
+      background: rgba(14, 20, 32, 0.6);
+      border: 1px solid var(--panel-border);
+      padding: 8px;
+      border-radius: 7px;
+      margin-bottom: 12px;
+    }
+    .chart-header { display: flex; justify-content: space-between; font-size: 10px; color: var(--tx-dim); margin-bottom: 6px; }
+    svg.sparkline { width: 100%; height: 38px; display: block; overflow: visible; }
+
+    /* SLIDER & CONTROLS */
+    .slider-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--tx-dim);
+      margin: 6px 0 4px;
+    }
+    input[type=range] {
+      width: 100%;
+      height: 5px;
+      background: #1c2333;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      box-shadow: 0 0 6px var(--cyan);
+    }
+    .action-btn {
+      width: 100%;
+      background: rgba(35, 47, 72, 0.8);
+      border: 1px solid var(--panel-border);
+      color: var(--tx);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.15s ease;
+    }
+    .action-btn:hover {
+      background: rgba(48, 65, 100, 0.9);
+      border-color: var(--cyan);
+      color: var(--tx-bright);
+    }
+
+    /* HAZARDS TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px; }
+    th, td { padding: 5px 4px; text-align: left; border-bottom: 1px solid rgba(56, 75, 110, 0.25); }
+    th { color: var(--tx-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; }
+    tr.hazard-row { cursor: pointer; transition: background 0.1s; }
+    tr.hazard-row:hover { background: rgba(56, 189, 248, 0.1); }
+    .badge-rock { color: var(--rock); font-weight: 600; }
+    .badge-crater { color: var(--crater); font-weight: 600; }
+
+    /* SIGNAL LOSS BANNER */
+    #signal-banner {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(248, 81, 73, 0.9);
+      color: #fff;
+      padding: 7px 20px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      box-shadow: 0 0 25px rgba(248, 81, 73, 0.6);
+      display: none;
+      z-index: 80;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">▲ C.R.A.T.E.R</div>
+      <div class="brand-sub">Lunar Reconnaissance Telemetry · ATEC'26</div>
+    </div>
+    <div class="header-center">
+      <div class="met-badge">
+        <div class="met-dot"></div>
+        <span>MET: <b id="met-time">00:00:00.0</b></span>
+      </div>
+    </div>
+    <div>
+      <span style="font-size: 11px; color: var(--tx-dim);">VEHICLE: <b style="color:var(--cyan)">SCOUT-1</b></span>
+    </div>
+  </header>
+
+  <!-- WORKSPACE -->
+  <div id="workspace">
+
+    <!-- CANVAS MAP -->
+    <div id="map-container">
+      <canvas id="c"></canvas>
+
+      <!-- SIGNAL BANNER -->
+      <div id="signal-banner">SIGNAL LOSS DETECTED · DISPLAYING EXTRAPOLATED STATE</div>
+
+      <!-- MAP CONTROLS -->
+      <div class="map-hud-controls">
+        <button class="zoom-btn" id="btn-zoom-in" title="Zoom In">+</button>
+        <button class="zoom-btn" id="btn-zoom-out" title="Zoom Out">−</button>
+        <button class="zoom-btn" id="btn-recenter" title="Recenter Rover" style="font-size: 13px;">⊙</button>
+      </div>
+
+      <!-- MAP LAYER TOGGLES -->
+      <div class="map-hud-top-right">
+        <button class="map-btn active" id="toggle-unc">±95% Ellipses</button>
+        <button class="map-btn active" id="toggle-trail">Path Trail</button>
+        <button class="map-btn active" id="toggle-frustum">Camera FOV</button>
+        <button class="map-btn active" id="toggle-grid">Grid (5m)</button>
+      </div>
+
+      <!-- DYNAMIC SCALE RULER -->
+      <div id="scale-ruler">
+        <div id="scale-bar-line" style="width: 60px;"></div>
+        <span id="scale-text">5 m</span>
+      </div>
+
+      <!-- HOVER TOOLTIP -->
+      <div id="hazard-tooltip">
+        <h4 id="tt-title">ROCK #12</h4>
+        <div class="tt-row"><span>Position (E, N):</span><b id="tt-pos">12.4 m, -3.2 m</b></div>
+        <div class="tt-row"><span>Range from Rover:</span><b id="tt-range">2.4 m</b></div>
+        <div class="tt-row"><span>Metric Width:</span><b id="tt-width">0.35 m</b></div>
+        <div class="tt-row"><span>95% Uncertainty:</span><b id="tt-unc">±0.22 m</b></div>
+        <div class="tt-row"><span>Data Age:</span><b id="tt-age">1.4 s</b></div>
+      </div>
+
+      <!-- BOTTOM-LEFT FLOATING VIDEO PIP -->
+      <div id="pip-video">
+        <div class="pip-header">
+          <div class="live-badge"><div class="dot"></div>ROVER OPTICAL SENSOR</div>
+          <div class="pip-controls">
+            <button class="pip-btn" id="pip-size-btn" title="Toggle size">⛶</button>
+            <button class="pip-btn" id="pip-min-btn" title="Minimize">_</button>
+          </div>
+        </div>
+        <div class="pip-content">
+          <img src="/video.mjpg" alt="Rover Camera Feed">
+          <div class="pip-osd">ONBOARD CV · CLAHE + YOLO11n</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <div class="sidebar-scroll">
+
+        <!-- LINK STATUS -->
+        <div class="sec-title"><span>Telemetry Link</span><span id="ping-text" style="color:var(--cyan)">- ms</span></div>
+        <div class="link-header">
+          <span style="color:var(--tx-dim); font-size: 11px;">RADIO HEALTH</span>
+          <span id="status-chip" class="status-badge ok">NOMINAL</span>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card"><div class="label">Measured Loss</div><div class="val" id="loss-val">0.0 %</div></div>
+          <div class="metric-card"><div class="label">Last Packet</div><div class="val" id="last-val">-</div></div>
+          <div class="metric-card"><div class="label">Packets Ingested</div><div class="val" id="rx-val">0</div></div>
+          <div class="metric-card"><div class="label">CRC Rejected</div><div class="val" id="crc-val" style="color:var(--bad)">0</div></div>
+        </div>
+
+        <!-- SPARKLINE LOSS -->
+        <div class="chart-container">
+          <div class="chart-header"><span>PACKET LOSS HISTORY (60s)</span><b id="loss-chart-lbl">0%</b></div>
+          <svg class="sparkline" id="loss-svg" viewBox="0 0 100 30" preserveAspectRatio="none">
+            <polyline id="loss-poly" fill="none" stroke="#f85149" stroke-width="2" points="0,30 100,30" />
+          </svg>
+        </div>
+
+        <!-- LINK CONTROLS -->
+        <div class="sec-title"><span>Link Simulator</span></div>
+        <div class="slider-row"><span>Channel Packet Loss</span><b id="sl-val">15 %</b></div>
+        <input id="sl" type="range" min="0" max="90" value="15">
+        <button class="action-btn" id="btn-blackout">Simulate 10s Blackout</button>
+
+        <!-- ROVER KINEMATICS -->
+        <div class="sec-title" style="margin-top: 16px;"><span>Rover State (Lander Frame)</span></div>
+        <div class="metric-grid">
+          <div class="metric-card"><div class="label">East Coordinate</div><div class="val" id="pos-e">0.0 m</div></div>
+          <div class="metric-card"><div class="label">North Coordinate</div><div class="val" id="pos-n">0.0 m</div></div>
+          <div class="metric-card"><div class="label">Heading (Yaw)</div><div class="val" id="pos-yaw">0°</div></div>
+          <div class="metric-card"><div class="label">Pose Error 1σ</div><div class="val" id="pos-unc">±0.05 m</div></div>
+        </div>
+
+        <!-- ACTIVE HAZARDS TABLE -->
+        <div class="sec-title"><span>Active Hazards (Sorted by Age)</span><span id="hazards-count">0</span></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Class</th>
+              <th>E, N (m)</th>
+              <th>±95%</th>
+              <th>Age</th>
+            </tr>
+          </thead>
+          <tbody id="tb"></tbody>
+        </table>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const cv = document.getElementById('c'), g = cv.getContext('2d');
+    let S = null;
+    const $ = id => document.getElementById(id);
+
+    // Color definitions
+    const COL = { rock: '248, 113, 113', crater: '251, 191, 36' };
+
+    // Canvas & View State
+    let zoom = 1.0;
+    let panX = 0, panY = 0;
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let hoveredHazard = null;
+    let selectedHazardId = null;
+
+    // Layer toggles
+    let showUncertainty = true;
+    let showTrail = true;
+    let showFrustum = true;
+    let showGrid = true;
+
+    // Metrics history
+    const lossHistory = new Array(30).fill(0);
+
+    // Canvas Resize
+    function fit() {
+      cv.width = cv.clientWidth * window.devicePixelRatio;
+      cv.height = cv.clientHeight * window.devicePixelRatio;
+      draw();
+    }
+    window.addEventListener('resize', fit);
+
+    // Freshness alpha
+    const alphaOf = a => Math.max(0.18, Math.min(1.0, 1 - a / 50));
+
+    // Coordinate transforms
+    function getTransforms() {
+      const W = cv.width, H = cv.height;
+      const s = (W / 36) * zoom;
+      const r = S && S.rover ? S.rover : { E: 0, N: 0, yaw_deg: 0 };
+      const cx = (W * 0.42) + (panX * window.devicePixelRatio);
+      const cy = (H * 0.50) + (panY * window.devicePixelRatio);
+      const X = e => cx + (e - r.E) * s;
+      const Y = n => cy - (n - r.N) * s;
+      const invX = px => r.E + (px - cx) / s;
+      const invN = py => r.N - (py - cy) / s;
+      return { W, H, s, r, cx, cy, X, Y, invX, invN, px: window.devicePixelRatio };
+    }
+
+    // DRAW FUNCTION
+    function draw() {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.fillStyle = '#07090e';
+      g.fillRect(0, 0, cv.width, cv.height);
+
+      if (!S || !S.rover) {
+        g.fillStyle = '#8b949e';
+        g.font = `${15 * window.devicePixelRatio}px system-ui`;
+        g.fillText('Establishing radio link with scout...', 36 * window.devicePixelRatio, 50 * window.devicePixelRatio);
+        return;
+      }
+
+      const { W, H, s, r, cx, cy, X, Y, px } = getTransforms();
+
+      // 1. Grid
+      if (showGrid) {
+        g.lineWidth = 1 * px;
+        const eMin = Math.floor(r.E - cx / s);
+        const eMax = Math.ceil(r.E + (W - cx) / s);
+        for (let e = eMin; e <= eMax; e++) {
+          const isMajor = (e % 5 === 0);
+          g.strokeStyle = isMajor ? 'rgba(56, 75, 110, 0.4)' : 'rgba(30, 42, 64, 0.2)';
+          g.beginPath();
+          g.moveTo(X(e), 0);
+          g.lineTo(X(e), H);
+          g.stroke();
+          if (isMajor) {
+            g.fillStyle = '#5c6c82';
+            g.font = `${10 * px}px ui-monospace, monospace`;
+            g.fillText(e + 'm', X(e) + 4 * px, H - 8 * px);
+          }
+        }
+
+        const nMin = Math.floor(r.N - cy / s);
+        const nMax = Math.ceil(r.N + cy / s);
+        for (let n = nMin; n <= nMax; n++) {
+          const isMajor = (n % 5 === 0);
+          g.strokeStyle = isMajor ? 'rgba(56, 75, 110, 0.4)' : 'rgba(30, 42, 64, 0.2)';
+          g.beginPath();
+          g.moveTo(0, Y(n));
+          g.lineTo(W, Y(n));
+          g.stroke();
+          if (isMajor) {
+            g.fillStyle = '#5c6c82';
+            g.font = `${10 * px}px ui-monospace, monospace`;
+            g.fillText(n + 'm', 8 * px, Y(n) - 4 * px);
+          }
+        }
+      }
+
+      // 2. Lander site (0, 0)
+      const lx = X(0), ly = Y(0);
+      g.fillStyle = '#38bdf8';
+      g.fillRect(lx - 6 * px, ly - 6 * px, 12 * px, 12 * px);
+      g.strokeStyle = '#fff';
+      g.lineWidth = 1.5 * px;
+      g.strokeRect(lx - 6 * px, ly - 6 * px, 12 * px, 12 * px);
+      g.font = `bold ${10 * px}px ui-monospace, monospace`;
+      g.fillStyle = '#38bdf8';
+      g.fillText('LANDER (0,0)', lx + 9 * px, ly - 6 * px);
+
+      // 3. Rover Path Trail
+      if (showTrail && S.trail && S.trail.length > 1) {
+        g.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+        g.lineWidth = 2 * px;
+        g.beginPath();
+        S.trail.forEach((p, i) => {
+          if (i === 0) g.moveTo(X(p[0]), Y(p[1]));
+          else g.lineTo(X(p[0]), Y(p[1]));
+        });
+        g.stroke();
+      }
+
+      // 4. Camera Vision Cone (Frustum)
+      if (showFrustum) {
+        g.save();
+        g.translate(X(r.E), Y(r.N));
+        g.rotate(-r.yaw_deg * Math.PI / 180);
+        const fovRad = 45 * Math.PI / 180; // 90° total
+        const trustedDistPx = 5.0 * s;
+        const grad = g.createRadialGradient(0, 0, 0, 0, 0, trustedDistPx);
+        grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+        grad.addColorStop(0.7, 'rgba(56, 189, 248, 0.08)');
+        grad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.arc(0, 0, trustedDistPx, -fovRad, fovRad);
+        g.closePath();
+        g.fill();
+        g.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+        g.lineWidth = 1 * px;
+        g.setLineDash([4 * px, 4 * px]);
+        g.beginPath();
+        g.arc(0, 0, trustedDistPx, -fovRad, fovRad);
+        g.stroke();
+        g.setLineDash([]);
+        g.restore();
+      }
+
+      // 5. Hazards
+      if (S.hazards) {
+        for (const h of S.hazards) {
+          const a = alphaOf(h.age);
+          const c = COL[h.cls] || '200, 200, 200';
+          const x = X(h.E), y = Y(h.N);
+          const rad = Math.max(h.width / 2, 0.15) * s;
+          const isSelected = selectedHazardId === h.hid || (hoveredHazard && hoveredHazard.hid === h.hid);
+
+          // 95% Uncertainty Ellipse
+          if (showUncertainty && h.unc95) {
+            g.setLineDash([5 * px, 4 * px]);
+            g.strokeStyle = `rgba(${c}, ${a * 0.75})`;
+            g.lineWidth = (isSelected ? 2 : 1) * px;
+            g.beginPath();
+            g.arc(x, y, Math.max(h.unc95 * s, rad + 2), 0, Math.PI * 2);
+            g.stroke();
+            g.setLineDash([]);
+          }
+
+          // Hazard shape
+          g.lineWidth = (isSelected ? 3 : 2) * px;
+          g.strokeStyle = `rgba(${c}, ${a})`;
+          g.fillStyle = `rgba(${c}, ${a * 0.45})`;
+          g.beginPath();
+          g.arc(x, y, rad, 0, Math.PI * 2);
+          if (h.cls === 'rock') g.fill();
+          g.stroke();
+
+          // Reticle ring if selected or hovered
+          if (isSelected) {
+            g.strokeStyle = '#38bdf8';
+            g.lineWidth = 1.5 * px;
+            g.beginPath();
+            g.arc(x, y, rad + 7 * px, 0, Math.PI * 2);
+            g.stroke();
+          }
+
+          // Hazard Label
+          g.fillStyle = `rgba(230, 237, 243, ${a})`;
+          g.font = `600 ${10 * px}px ui-monospace, monospace`;
+          g.fillText('#' + h.hid + (h.age > 8 ? ` (${Math.round(h.age)}s)` : ''), x + rad + 4 * px, y - rad);
+        }
+      }
+
+      // 6. Rover Representation
+      g.save();
+      g.translate(X(r.E), Y(r.N));
+      g.rotate(-r.yaw_deg * Math.PI / 180);
+      // Rover vehicle body
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.moveTo(14 * px, 0);
+      g.lineTo(-10 * px, 8 * px);
+      g.lineTo(-7 * px, 0);
+      g.lineTo(-10 * px, -8 * px);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = '#38bdf8';
+      g.lineWidth = 2 * px;
+      g.stroke();
+      g.restore();
+
+      // Update Dynamic Scale Ruler text & bar
+      updateScaleRuler(s, px);
+    }
+
+    function updateScaleRuler(s, px) {
+      const targetPixels = 70 * px;
+      const rawMeters = targetPixels / s;
+      const steps = [0.5, 1, 2, 5, 10, 20, 50, 100];
+      let best = steps[0];
+      for (const step of steps) {
+        if (Math.abs(step - rawMeters) < Math.abs(best - rawMeters)) best = step;
+      }
+      const actualWidth = best * s / px;
+      $('scale-bar-line').style.width = actualWidth + 'px';
+      $('scale-text').textContent = best + ' m';
+    }
+
+    // MAP INTERACTION (PAN & ZOOM & INSPECTOR)
+    cv.addEventListener('mousedown', e => {
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    cv.addEventListener('mousemove', e => {
+      if (isDragging) {
+        panX += (e.clientX - dragStartX);
+        panY += (e.clientY - dragStartY);
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        draw();
+      } else {
+        // Detect hazard hover
+        if (!S || !S.hazards) return;
+        const rect = cv.getBoundingClientRect();
+        const mousePxX = (e.clientX - rect.left) * window.devicePixelRatio;
+        const mousePxY = (e.clientY - rect.top) * window.devicePixelRatio;
+        const { X, Y, s } = getTransforms();
+
+        let found = null;
+        for (const h of S.hazards) {
+          const rad = Math.max(h.width / 2, 0.15) * s;
+          const dist = Math.hypot(mousePxX - X(h.E), mousePxY - Y(h.N));
+          if (dist <= Math.max(rad + 10, 16 * window.devicePixelRatio)) {
+            found = h;
+            break;
+          }
+        }
+        hoveredHazard = found;
+        const tt = $('hazard-tooltip');
+        if (found) {
+          $('tt-title').textContent = `${found.cls.toUpperCase()} #${found.hid}`;
+          $('tt-pos').textContent = `${found.E.toFixed(1)} m, ${found.N.toFixed(1)} m`;
+          const rng = S.rover ? Math.hypot(found.E - S.rover.E, found.N - S.rover.N).toFixed(1) : '-';
+          $('tt-range').textContent = `${rng} m`;
+          $('tt-width').textContent = `${found.width.toFixed(2)} m`;
+          $('tt-unc').textContent = `±${found.unc95.toFixed(2)} m`;
+          $('tt-age').textContent = `${found.age.toFixed(1)} s`;
+          tt.style.left = (e.clientX + 16) + 'px';
+          tt.style.top = (e.clientY - 20) + 'px';
+          tt.style.display = 'block';
+        } else {
+          tt.style.display = 'none';
+        }
+        draw();
+      }
+    });
+
+    cv.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      zoom = Math.max(0.2, Math.min(8.0, zoom * factor));
+      draw();
+    }, { passive: false });
+
+    cv.addEventListener('click', () => {
+      if (hoveredHazard) {
+        selectedHazardId = hoveredHazard.hid;
+        draw();
+      }
+    });
+
+    // CONTROLS & BUTTONS
+    $('btn-zoom-in').onclick = () => { zoom = Math.min(8.0, zoom * 1.25); draw(); };
+    $('btn-zoom-out').onclick = () => { zoom = Math.max(0.2, zoom * 0.8); draw(); };
+    $('btn-recenter').onclick = () => { panX = 0; panY = 0; zoom = 1.0; selectedHazardId = null; draw(); };
+
+    $('toggle-unc').onclick = function() { showUncertainty = !showUncertainty; this.classList.toggle('active', showUncertainty); draw(); };
+    $('toggle-trail').onclick = function() { showTrail = !showTrail; this.classList.toggle('active', showTrail); draw(); };
+    $('toggle-frustum').onclick = function() { showFrustum = !showFrustum; this.classList.toggle('active', showFrustum); draw(); };
+    $('toggle-grid').onclick = function() { showGrid = !showGrid; this.classList.toggle('active', showGrid); draw(); };
+
+    // PIP VIDEO BUTTONS
+    const pip = $('pip-video');
+    $('pip-min-btn').onclick = () => { pip.classList.toggle('minimized'); };
+    $('pip-size-btn').onclick = () => { pip.classList.toggle('expanded'); };
+
+    // TELEMETRY POLLING & UPDATES
+    async function poll() {
+      try {
+        S = await (await fetch('/api/state')).json();
+      } catch (e) {
+        return;
+      }
+
+      const L = S.link;
+      const chip = $('status-chip');
+      chip.textContent = L.status;
+      chip.className = 'status-badge ' + (L.status === 'OK' ? 'ok' : L.status === 'DEGRADED' ? 'degraded' : 'lost');
+
+      $('ping-text').textContent = L.latency_ms + ' ms';
+      $('loss-val').textContent = L.loss_pct + ' %';
+      $('last-val').textContent = L.since_last_s == null ? '-' : L.since_last_s.toFixed(1) + ' s ago';
+      $('rx-val').textContent = L.rx;
+      $('crc-val').textContent = L.corrupted;
+      $('signal-banner').style.display = (L.status === 'LOST') ? 'block' : 'none';
+
+      // Slider sync
+      if (document.activeElement !== $('sl')) {
+        $('sl').value = L.set_loss_pct;
+        $('sl-val').textContent = L.set_loss_pct + ' %';
+      }
+
+      // Rover Kinematics
+      if (S.rover) {
+        $('pos-e').textContent = S.rover.E.toFixed(1) + ' m';
+        $('pos-n').textContent = S.rover.N.toFixed(1) + ' m';
+        $('pos-yaw').textContent = Math.round(S.rover.yaw_deg) + '°';
+        $('pos-unc').textContent = '±' + S.rover.pose_sigma.toFixed(2) + ' m';
+
+        // Mission Clock
+        const sec = Math.floor(S.rover.t);
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        const ds = Math.floor((S.rover.t % 1) * 10);
+        $('met-time').textContent = `00:${mm}:${ss}.${ds}`;
+      }
+
+      // Update Sparkline
+      lossHistory.shift();
+      lossHistory.push(L.loss_pct);
+      updateSparkline();
+
+      // Update Hazards Table
+      if (S.hazards) {
+        $('hazards-count').textContent = S.hazards.length;
+        const sorted = [...S.hazards].sort((a, b) => a.age - b.age);
+        $('tb').innerHTML = sorted.slice(0, 12).map(h => {
+          const a = alphaOf(h.age);
+          const badge = h.cls === 'rock' ? 'badge-rock' : 'badge-crater';
+          return `<tr class="hazard-row" style="opacity:${a}" onclick="focusHazard(${h.hid})">
+            <td>#${h.hid}</td>
+            <td class="${badge}">${h.cls.toUpperCase()}</td>
+            <td>${h.E.toFixed(1)}, ${h.N.toFixed(1)}</td>
+            <td>±${h.unc95.toFixed(1)}</td>
+            <td>${h.age.toFixed(0)}s</td>
+          </tr>`;
+        }).join('');
+      }
+
+      draw();
+    }
+
+    function focusHazard(hid) {
+      selectedHazardId = hid;
+      const target = S.hazards.find(h => h.hid === hid);
+      if (target && S.rover) {
+        panX = (S.rover.E - target.E) * (cv.width / 36) * zoom / window.devicePixelRatio;
+        panY = -(S.rover.N - target.N) * (cv.width / 36) * zoom / window.devicePixelRatio;
+      }
+      draw();
+    }
+
+    function updateSparkline() {
+      const maxVal = Math.max(30, ...lossHistory);
+      const points = lossHistory.map((val, idx) => {
+        const x = (idx / (lossHistory.length - 1)) * 100;
+        const y = 30 - (val / maxVal) * 26;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      $('loss-poly').setAttribute('points', points);
+      $('loss-chart-lbl').textContent = lossHistory[lossHistory.length - 1].toFixed(0) + '%';
+    }
+
+    // Link controls
+    $('sl').oninput = e => { $('sl-val').textContent = e.target.value + ' %'; };
+    $('sl').onchange = e => fetch('/api/link', { method: 'POST', body: JSON.stringify({ loss: e.target.value / 100 }) });
+    $('btn-blackout').onclick = () => fetch('/api/link', { method: 'POST', body: JSON.stringify({ blackout: 10 }) });
+
+    // Video auto-reconnect
+    const vi = document.querySelector('#pip-video img');
+    if (vi) {
+      vi.onerror = () => { setTimeout(() => { vi.src = '/video.mjpg?t=' + Date.now(); }, 1200); };
+    }
+
+    fit();
+    setInterval(poll, 400);
+    poll();
+  </script>
+</body>
+</html>
