@@ -11,6 +11,7 @@ software, it never builds a backlog). Rover motion is a SIMULATED straight drive
 (the video provides the camera view, not the odometry). Ctrl-C to stop.
 """
 import argparse
+import json
 import math
 import socket
 import sys
@@ -68,6 +69,9 @@ def main():
     ap.add_argument("--jitter-ms", type=float, default=lk["jitter_ms"])
     ap.add_argument("--bandwidth-bps", type=float, default=lk["bandwidth_bps"])
     ap.add_argument("--corrupt", type=float, default=lk["corrupt"], help="probability of a bit flip per packet")
+    ap.add_argument("--headless", action="store_true", help="no dashboard server: run for --duration, write a report")
+    ap.add_argument("--duration", type=float, default=60.0, help="headless run length, seconds")
+    ap.add_argument("--report", default=None, help="write a JSON report of the run to this path")
     args = ap.parse_args()
 
     mp = model_path(cfg)
@@ -82,14 +86,16 @@ def main():
 
     link = LinkEmulator(("127.0.0.1", LINK_PORT), ("127.0.0.1", GROUND_PORT), loss=args.loss,
                         delay_ms=args.delay_ms, jitter_ms=args.jitter_ms, bandwidth_bps=args.bandwidth_bps,
-                        queue_max=lk["queue_max"], corrupt=args.corrupt)
+                        queue_max=lk["queue_max"], corrupt=args.corrupt, burst=lk["burst"])
     ground = GroundStation(GROUND_PORT, link)
     link.start()
     ground.start()
     feed = VideoFeed()
-    serve(ground, link, args.port, feed)
+    if not args.headless:
+        serve(ground, link, args.port, feed)
     tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    print(f"Mission Control: http://127.0.0.1:{args.port}   (Ctrl-C to stop)")
+    print(f"Headless run, {args.duration:.0f} s" if args.headless else
+          f"Mission Control: http://127.0.0.1:{args.port}   (Ctrl-C to stop)")
     print(f"Link: loss {args.loss:.0%}, delay {args.delay_ms:.0f}+-{args.jitter_ms:.0f} ms, "
           f"{args.bandwidth_bps:.0f} bit/s | packets <= {cfg['telemetry']['max_packet_bytes']} B ({max_h} hazards)")
 
@@ -103,6 +109,8 @@ def main():
     try:
         while True:
             t = time.monotonic() - t0
+            if args.headless and t >= args.duration:
+                break
             try:
                 for _ in range(max(0, int(t * fps) - consumed)):      # behind real time: skip frames
                     next(frames)
@@ -112,6 +120,8 @@ def main():
                     time.sleep(wait)
                 frame = next(frames)
             except StopIteration:
+                if args.headless:
+                    break
                 print("Video ended. Dashboard stays up (data keeps ageing). Ctrl-C to stop.")
                 while True:
                     time.sleep(1)
@@ -169,6 +179,19 @@ def main():
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        if args.report:
+            time.sleep(args.delay_ms / 1000 * 2 + 0.5)                 # let in-flight packets arrive
+            snap, lks = ground.snapshot(), link.snapshot()
+            rep = {"source": args.source, "duration_s": round(time.monotonic() - t0, 1), "frames_consumed": consumed,
+                   "packets_sent": seq, "hazards_tracked": len(hmap.tracks),
+                   "hazards_confirmed": sum(tr.hits >= hmap.confirm_hits for tr in hmap.tracks.values()),
+                   "hazards_at_ground": len(snap["hazards"]),
+                   "link": {k: lks[k] for k in ("sent", "delivered", "dropped_loss", "dropped_blackout", "dropped_queue",
+                                                "corrupted", "bytes_in", "bytes_out")},
+                   "ground": {k: snap["link"][k] for k in ("status", "loss_pct", "rx", "corrupted", "bytes_rx", "latency_ms")}}
+            Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.report).write_text(json.dumps(rep, indent=2))
+            print(f"Report written: {args.report}")
         link.stop()
         ground.stop()
 

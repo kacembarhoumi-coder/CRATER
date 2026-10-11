@@ -30,7 +30,7 @@
   },
   "telemetry": {
     "rover_id": 1,
-    "max_packet_bytes": 64
+    "max_packet_bytes": 80
   },
   "rover": {
     "wheel_diameter_m": 0.2
@@ -40,5 +40,14 @@
     "rock_min_width_m": 0.2,
     "crater_min_width_m": 0.3,
     "show_small": true
+  },
+  "link": {
+    "loss": 0.15,
+    "delay_ms": 1300,
+    "jitter_ms": 150,
+    "bandwidth_bps": 9600,
+    "queue_max": 32,
+    "corrupt": 0.0,
+    "burst": 3.0
   }
 }

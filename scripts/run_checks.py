@@ -31,6 +31,7 @@ OUT.mkdir(exist_ok=True)
 ap = argparse.ArgumentParser()
 ap.add_argument("--source", default=None, help="video file to benchmark instead of data/sample_images")
 ap.add_argument("--max-frames", type=int, default=60, help="frames sampled from the video")
+ap.add_argument("--e2e-seconds", type=float, default=20.0, help="length of the headless end-to-end run (needs --source)")
 args = ap.parse_args()
 
 from crater.config import build_error_model, build_projector, load_config, model_path  # noqa: E402
@@ -145,6 +146,36 @@ if mp.exists() and (args.source or imgs):
 else:
     summary.append("## Perception benchmark\n\nSkipped: put the model in models/ and images in data/sample_images/.\n")
     print("Perception: skipped (model or sample images missing)")
+
+# 5. delivery under burst loss (virtual time: seconds, not minutes) -----------------------
+res2 = subprocess.run([sys.executable, str(ROOT / "tests" / "test_delivery.py")], cwd=ROOT, capture_output=True, text=True)
+rep_path = OUT / "delivery_report.json"
+if res2.returncode == 0 and rep_path.exists():
+    rows = json.loads(rep_path.read_text())["results"]
+    table = "".join(f"| {r['loss_configured']:.0%} | {r['hazards_delivered']}/{r['hazards_confirmed_onboard']} | "
+                    f"{r['latency_median_s']} / {r['latency_p95_s']} | {r['position_error_mean_m']} |\n" for r in rows)
+    summary.append("## Delivery under burst loss (baseline: repetition only, no ACK)\n\n"
+                   "| Loss | Hazards delivered | Latency median / p95 (s) | Mean position error (m) |\n|---|---|---|---|\n" + table)
+    print("Delivery:", "; ".join(f"{r['loss_configured']:.0%} loss -> {r['hazards_delivered']}/{r['hazards_confirmed_onboard']}" for r in rows))
+else:
+    summary.append("## Delivery under burst loss\n\nFAILED to run: " + (res2.stderr or res2.stdout)[-400:] + "\n")
+    print("Delivery: FAILED (see SUMMARY.md)")
+
+# 6. headless end-to-end run: video -> perception -> packets -> link -> ground ---------------
+if args.source and mp.exists():
+    e2e = OUT / "e2e_report.json"
+    res3 = subprocess.run([sys.executable, str(ROOT / "scripts" / "run_demo.py"), "--source", args.source, "--headless",
+                           "--duration", str(args.e2e_seconds), "--report", str(e2e)], cwd=ROOT, capture_output=True, text=True)
+    if res3.returncode == 0 and e2e.exists():
+        r = json.loads(e2e.read_text())
+        summary.append(f"## End-to-end run (video to ground station, headless)\n\n{r['duration_s']} s on `{args.source}`: "
+                       f"{r['packets_sent']} packets sent, {r['link']['delivered']} delivered, "
+                       f"{r['hazards_confirmed']} hazards confirmed onboard, {r['hazards_at_ground']} known at the ground station "
+                       f"(measured loss {r['ground']['loss_pct']} %, {r['ground']['corrupted']} corrupted packets rejected).\n")
+        print(f"End-to-end: {r['packets_sent']} packets, {r['hazards_confirmed']} confirmed onboard, {r['hazards_at_ground']} at ground")
+    else:
+        summary.append("## End-to-end run\n\nFAILED: " + (res3.stderr or res3.stdout)[-400:] + "\n")
+        print("End-to-end: FAILED (see SUMMARY.md)")
 
 (OUT / "SUMMARY.md").write_text("\n".join(summary), encoding="utf-8")
 print(f"\nAll outputs written to {OUT}")

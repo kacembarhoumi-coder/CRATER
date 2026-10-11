@@ -58,32 +58,35 @@ class GroundStation(threading.Thread):
                 continue
             except OSError:
                 break
-            now = time.time()
-            try:
-                pkt = decode_packet(data)
-            except PacketError:
-                with self.lock:
-                    self.bad += 1
-                continue
+            self.ingest(data, time.time())
+
+    def ingest(self, data, now):
+        """Process one received datagram. Called by the receiver thread, or directly by virtual-time tests."""
+        try:
+            pkt = decode_packet(data)
+        except PacketError:
             with self.lock:
-                if self.last_seq is not None:
-                    delta = (pkt["seq"] - self.last_seq) & 0xFFFF
-                    if delta == 0:
-                        self.dups += 1
-                        continue
-                    if delta >= 0x8000:                         # late (reordered) packet: ignore for loss
-                        continue
-                    self.window.extend([0] * min(delta - 1, 60))
-                self.window.append(1)
-                self.last_seq, self.last_rx = pkt["seq"], now
-                self.rx += 1
-                self.bytes_rx += len(data)
-                self.rover = {**pkt["rover"], "t": pkt["t"], "seq": pkt["seq"]}
-                self.trail.append((pkt["rover"]["E"], pkt["rover"]["N"]))
-                for h in pkt["hazards"]:
-                    self.hazards[h["hid"]] = {**h, "rx": now}
-                if len(self.hazards) > self.max_hazards:
-                    del self.hazards[min(self.hazards, key=lambda k: self.hazards[k]["rx"])]
+                self.bad += 1
+            return
+        with self.lock:
+            if self.last_seq is not None:
+                delta = (pkt["seq"] - self.last_seq) & 0xFFFF
+                if delta == 0:
+                    self.dups += 1
+                    return
+                if delta >= 0x8000:                             # late (reordered) packet: ignore for loss
+                    return
+                self.window.extend([0] * min(delta - 1, 60))
+            self.window.append(1)
+            self.last_seq, self.last_rx = pkt["seq"], now
+            self.rx += 1
+            self.bytes_rx += len(data)
+            self.rover = {**pkt["rover"], "t": pkt["t"], "seq": pkt["seq"]}
+            self.trail.append((pkt["rover"]["E"], pkt["rover"]["N"]))
+            for h in pkt["hazards"]:
+                self.hazards[h["hid"]] = {**h, "rx": now}
+            if len(self.hazards) > self.max_hazards:
+                del self.hazards[min(self.hazards, key=lambda k: self.hazards[k]["rx"])]
 
     def snapshot(self):
         now, lk = time.time(), self.link.snapshot()

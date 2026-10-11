@@ -1,10 +1,10 @@
 # C.R.A.T.E.R automated test outputs
 
-Generated 2026-10-11 03:23:37 on Windows-11-10.0.26200-SP0, Python 3.14.0
+Generated 2026-10-11 04:10:54 on Windows-11-10.0.26200-SP0, Python 3.14.0
 
 ## Unit tests
 
-`24 passed in 1.36s` (details: pytest_report.txt, junit.xml)
+`28 passed in 2.84s` (details: pytest_report.txt, junit.xml)
 
 ## Localization error budget (1 sigma)
 
@@ -31,4 +31,13 @@ Generated 2026-10-11 03:23:37 on Windows-11-10.0.26200-SP0, Python 3.14.0
 
 ## Perception benchmark
 
-Source: `data/sample_images`. 10 frames, 1 CPU thread(s): **39.8 ms/frame (25.1 FPS)** including preprocessing; model 10.54 MB. Annotated images in images/.
+Source: `data/sample_images`. 10 frames, 1 CPU thread(s): **69.8 ms/frame (14.3 FPS)** including preprocessing; model 10.54 MB. Annotated images in images/.
+
+## Delivery under burst loss (baseline: repetition only, no ACK)
+
+| Loss | Hazards delivered | Latency median / p95 (s) | Mean position error (m) |
+|---|---|---|---|
+| 0% | 20/20 | 12.8 / 83.4 | 0.16 |
+| 10% | 20/20 | 12.9 / 83.3 | 0.21 |
+| 30% | 20/20 | 12.8 / 83.3 | 0.16 |
+| 60% | 20/20 | 14.0 / 86.3 | 0.16 |
